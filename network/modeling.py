@@ -3,7 +3,7 @@ from ._deeplab import DeepLabHead, DeepLabHeadV3Plus, DeepLabV3
 from .backbone import resnet
 from .backbone import mobilenetv2
 
-def _segm_resnet(name, backbone_name, num_classes, output_stride, pretrained_backbone):
+def _segm_resnet(name, backbone_name, num_classes, output_stride, pretrained_backbone, num_inputs=None):
 
     if output_stride==8:
         replace_stride_with_dilation=[False, True, True]
@@ -113,6 +113,18 @@ def deeplabv3plus_resnet50(num_classes=21, output_stride=8, pretrained_backbone=
         pretrained_backbone (bool): If True, use the pretrained backbone.
     """
     return _load_model('deeplabv3plus', 'resnet50', num_classes, output_stride=output_stride, pretrained_backbone=pretrained_backbone)
+
+
+def deeplabv3plus_resnet50_multi_input(num_classes=3, output_stride=8, pretrained_backbone=False):
+    """Constructs a DeepLabV3 model with a ResNet-50 backbone.
+
+    Args:
+        num_classes (int): number of classes.
+        output_stride (int): output stride for deeplab.
+        pretrained_backbone (bool): If True, use the pretrained backbone.
+    """
+    return _load_model('deeplabv3plus', 'resnet50', num_classes, output_stride=output_stride, pretrained_backbone=pretrained_backbone)
+
 
 
 def deeplabv3plus_resnet101(num_classes=21, output_stride=8, pretrained_backbone=True):

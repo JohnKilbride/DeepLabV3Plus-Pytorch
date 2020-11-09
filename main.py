@@ -9,6 +9,7 @@ import numpy as np
 from torch.utils import data
 from datasets import VOCSegmentation, Cityscapes
 from utils import ext_transforms as et
+from utils import jk_transforms as jk
 from metrics import StreamSegMetrics
 
 import torch
@@ -27,13 +28,13 @@ def get_argparser():
     parser.add_argument("--data_root", type=str, default='./datasets/data',
                         help="path to Dataset")
     parser.add_argument("--dataset", type=str, default='voc',
-                        choices=['voc', 'cityscapes'], help='Name of dataset')
+                        choices=['voc', 'cityscapes', 'coca'], help='Name of dataset')
     parser.add_argument("--num_classes", type=int, default=None,
                         help="num classes (default: None)")
-
+    
     # Deeplab Options
     parser.add_argument("--model", type=str, default='deeplabv3plus_mobilenet',
-                        choices=['deeplabv3_resnet50',  'deeplabv3plus_resnet50',
+                        choices=['deeplabv3_resnet50',  'deeplabv3plus_resnet50','deeplabv3plus_resnet50_multi_input',
                                  'deeplabv3_resnet101', 'deeplabv3plus_resnet101',
                                  'deeplabv3_mobilenet', 'deeplabv3plus_mobilenet'], help='model name')
     parser.add_argument("--separable_conv", action='store_true', default=False,
@@ -128,26 +129,26 @@ def get_dataset(opts):
 
     if opts.dataset == 'cityscapes':
         train_transform = et.ExtCompose([
-            #et.ExtResize( 512 ),
-            et.ExtRandomCrop(size=(opts.crop_size, opts.crop_size)),
-            et.ExtColorJitter( brightness=0.5, contrast=0.5, saturation=0.5 ),
-            et.ExtRandomHorizontalFlip(),
-            et.ExtToTensor(),
-            et.ExtNormalize(mean=[0.485, 0.456, 0.406],
-                            std=[0.229, 0.224, 0.225]),
+            jk.RandomHorizontalFlip2DTensor(p=0.5),
+            jk.RandomVerticalFlip2DTensor(p=0.5)
         ])
 
-        val_transform = et.ExtCompose([
-            #et.ExtResize( 512 ),
-            et.ExtToTensor(),
-            et.ExtNormalize(mean=[0.485, 0.456, 0.406],
-                            std=[0.229, 0.224, 0.225]),
+        val_transform = et.ExtCompose([])
+
+        train_dst = Cityscapes(root=opts.data_root, split='train', transform=train_transform)
+        val_dst = Cityscapes(root=opts.data_root, split='val', transform=val_transform)
+        
+    if opts.dataset == 'coca':
+        train_transform = et.ExtCompose([
+            jk.RandomHorizontalFlip2DTensor(p=0.5),
+            jk.RandomVerticalFlip2DTensor(p=0.5)
         ])
 
-        train_dst = Cityscapes(root=opts.data_root,
-                               split='train', transform=train_transform)
-        val_dst = Cityscapes(root=opts.data_root,
-                             split='val', transform=val_transform)
+        val_transform = et.ExtCompose([])
+
+        train_dst = Cityscapes(root=opts.data_root, split='train', transform=train_transform)
+        val_dst = Cityscapes(root=opts.data_root, split='dev', transform=val_transform)
+        
     return train_dst, val_dst
 
 
@@ -207,11 +208,16 @@ def validate(opts, model, loader, device, metrics, ret_samples_ids=None):
 
 
 def main():
+    
     opts = get_argparser().parse_args()
+    
+    # Set the number of classes
     if opts.dataset.lower() == 'voc':
         opts.num_classes = 21
     elif opts.dataset.lower() == 'cityscapes':
         opts.num_classes = 19
+    elif opts.dataset.lower() == 'coca':
+        opts.num_classes = 3
 
     # Setup visualization
     vis = Visualizer(port=opts.vis_port,
@@ -229,21 +235,22 @@ def main():
     random.seed(opts.random_seed)
 
     # Setup dataloader
-    if opts.dataset=='voc' and not opts.crop_val:
+    if opts.dataset == 'voc' and not opts.crop_val:
         opts.val_batch_size = 1
     
+    # Get the dataset
     train_dst, val_dst = get_dataset(opts)
-    train_loader = data.DataLoader(
-        train_dst, batch_size=opts.batch_size, shuffle=True, num_workers=2)
-    val_loader = data.DataLoader(
-        val_dst, batch_size=opts.val_batch_size, shuffle=True, num_workers=2)
-    print("Dataset: %s, Train set: %d, Val set: %d" %
-          (opts.dataset, len(train_dst), len(val_dst)))
-
+    
+    # Create the data loaders
+    train_loader = data.DataLoader(train_dst, batch_size=opts.batch_size, shuffle=True, num_workers=2)
+    val_loader = data.DataLoader(val_dst, batch_size=opts.val_batch_size, shuffle=True, num_workers=2)
+    print("Dataset: %s, Train set: %d, Val set: %d" % (opts.dataset, len(train_dst), len(val_dst)))
+    
     # Set up model
     model_map = {
         'deeplabv3_resnet50': network.deeplabv3_resnet50,
         'deeplabv3plus_resnet50': network.deeplabv3plus_resnet50,
+        'deeplabv3plus_resnet50_multi_input': network.deeplabv3plus_resnet50_multi_input,
         'deeplabv3_resnet101': network.deeplabv3_resnet101,
         'deeplabv3plus_resnet101': network.deeplabv3plus_resnet101,
         'deeplabv3_mobilenet': network.deeplabv3_mobilenet,
